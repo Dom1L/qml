@@ -5,14 +5,7 @@ from ..representations.graph_representations import generate_bond_hop, generate_
 
 
 class GraphCompound(object):
-    """ The ``Graph Compound`` class is used to store data from
-
-        :param adj: Option to initialize the ``Compound`` with data from an XYZ file.
-        :param nuclear_charge: Option to initialize the ``Compound`` with data from an XYZ file.
-        :param distance_matric: Option to initialize the ``Compound`` with data from an XYZ file.
-
-        :type xyz: string
-    """
+    """ The ``Graph Compound`` class is used to store data from"""
 
     def __init__(self, adjacency_matrix, nuclear_charge, distances=None):
         empty_array = np.asarray([], dtype=float)
