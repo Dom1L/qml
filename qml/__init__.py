@@ -42,6 +42,8 @@ from . import representations
 from . import qmlearn
 from . import utils
 from .utils.compound import Compound
+from .utils.graph_compound import GraphCompound
+
 
 __author__ = "Anders S. Christensen"
 __copyright__ = "Copyright 2016"
