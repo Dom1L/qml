@@ -34,28 +34,28 @@ class GraphCompound(object):
 
     def generate_bond_order(self, size=9, sorting="row-norm"):
         self.representation = self.adjacency_matrix
-        if sorting == 'norm_row':
+        if sorting == 'row-norm':
             self.sort_norm()
         self.zero_padding(size)
         self.representation = self.representation[np.triu_indices(self.representation.shape[1], k=1)]
 
     def generate_bond_hop(self, size=9, sorting="row-norm"):
         self.representation = generate_bond_hop(self.adjacency_matrix, self.nuclear_charges)
-        if sorting == 'norm_row':
+        if sorting == 'row-norm':
             self.sort_norm()
         self.zero_padding(size)
         self.representation = self.representation[np.triu_indices(self.representation.shape[1], k=1)]
 
     def generate_bond_length(self, size=9, sorting="row-norm"):
         self.representation = generate_bond_length(self.adjacency_matrix, self.nuclear_charges)
-        if sorting == 'norm_row':
+        if sorting == 'row-norm':
             self.sort_norm()
         self.zero_padding(size)
         self.representation = self.representation[np.triu_indices(self.representation.shape[1], k=1)]
 
     def generate_graph_coulomb_matrix(self, size=9, sorting="row-norm"):
         self.representation = generate_graph_coulomb_matrix(self.adjacency_matrix, self.nuclear_charges)
-        if sorting == 'norm_row':
+        if sorting == 'row-norm':
             self.sort_norm()
         self.zero_padding(size)
         self.representation = self.representation[np.triu_indices(self.representation.shape[1], k=0)]
