@@ -129,6 +129,117 @@ subroutine fglobal_kernel(x1, x2, q1, q2, n1, n2, nm1, nm2, sigma, kernel)
 end subroutine fglobal_kernel
 
 
+subroutine fglobal_kernel_laplacian(x1, x2, q1, q2, n1, n2, nm1, nm2, sigma, kernel)
+
+    implicit none
+
+    double precision, dimension(:,:,:), intent(in) :: x1
+    double precision, dimension(:,:,:), intent(in) :: x2
+
+    integer, dimension(:,:), intent(in) :: q1
+    integer, dimension(:,:), intent(in) :: q2
+
+    integer, dimension(:), intent(in) :: n1
+    integer, dimension(:), intent(in) :: n2
+
+    integer, intent(in) :: nm1
+    integer, intent(in) :: nm2
+
+    double precision, intent(in) :: sigma
+
+    double precision, dimension(nm2,nm1), intent(out) :: kernel
+
+    integer :: i1, i2
+    integer :: j1, j2
+
+    integer :: a, b
+
+    integer :: rep_size
+    double precision :: inv_sigma
+
+    double precision, allocatable, dimension(:) :: d
+    double precision, dimension(nm1) :: s11
+    double precision, dimension(nm2) :: s22
+    double precision :: s12
+
+    double precision :: l2
+    double precision :: l1
+
+    kernel = 0.0d0
+
+    rep_size = size(x1, dim=3)
+    allocate(d(rep_size))
+
+    inv_sigma = -1.0d0 / sigma
+
+    s11(:) = 0.0d0
+
+    !$OMP PARALLEL DO REDUCTION(+:s11)
+    do a = 1, nm1
+        do j1 = 1, n1(a)
+            do i1 = 1, n1(a)
+
+                if (q1(j1,a) == q1(i1,a)) then
+                    s11(a) = s11(a) + dot_product(x1(a,j1,:), x1(a,i1,:))
+                endif
+
+            enddo
+        enddo
+    enddo
+    !$OMP END PARALLEL DO
+
+
+    s22(:) = 0.0d0
+
+    !$OMP PARALLEL DO REDUCTION(+:s22)
+    do b = 1, nm2
+        do j2 = 1, n2(b)
+            do i2 = 1, n2(b)
+
+                if (q2(j2,b) == q2(i2,b)) then
+                    s22(b) = s22(b) + dot_product(x2(b,j2,:), x2(b,i2,:))
+                endif
+
+            enddo
+        enddo
+    enddo
+    !$OMP END PARALLEL DO
+
+    !$OMP PARALLEL DO private(s12, l1) schedule(dynamic)
+    do a = 1, nm1
+
+        ! Molecule 2
+        do b = 1, nm2
+
+            s12 = 0.0d0
+            ! Atom in Molecule 1
+            do j1 = 1, n1(a)
+
+                !Atom in Molecule2
+                do j2 = 1, n2(b)
+
+                    if (q1(j1,a) == q2(j2,b)) then
+
+                        s12 = s12 + dot_product(x1(a,j1,:), x2(b,j2,:))
+
+                    endif
+
+                enddo
+            enddo
+
+            l2 = s11(a) + s22(b) - 2.0d0*s12
+            l1 = sqrt(l2)
+            kernel(b, a) = exp(l1 * inv_sigma)
+
+        enddo
+    enddo
+    !$OMP END PARALLEL DO
+
+    deallocate(d)
+
+end subroutine fglobal_kernel_laplacian
+
+
 subroutine flocal_kernels(x1, x2, q1, q2, n1, n2, nm1, nm2, sigmas, nsigmas, kernel)
 
     ! use omp_lib, only: omp_get_thread_num, omp_get_wtime
@@ -349,6 +460,115 @@ subroutine fsymmetric_local_kernels(x1, q1, n1, nm1, sigmas, nsigmas, kernel)
 end subroutine fsymmetric_local_kernels
 
 
+subroutine fsymmetric_local_kernels_laplacian(x1, q1, n1, nm1, sigmas, nsigmas, kernel)
+
+    ! use omp_lib, only: omp_get_thread_num, omp_get_wtime
+
+    implicit none
+
+    double precision, dimension(:,:,:), intent(in) :: x1
+    integer, dimension(:,:), intent(in) :: q1
+    integer, dimension(:), intent(in) :: n1
+    integer, intent(in) :: nm1
+
+    double precision, dimension(:), intent(in) :: sigmas
+    integer, intent(in) :: nsigmas
+
+    double precision, dimension(nsigmas,nm1,nm1), intent(out) :: kernel
+
+    integer :: j1, j2
+    integer :: a, b
+    integer :: i
+
+    integer :: work_done
+    integer :: work_total
+
+    integer :: rep_size
+    double precision, allocatable, dimension(:) :: inv_sigma
+    double precision :: l1
+
+    double precision :: t_start
+    double precision :: t_elapsed
+    double precision :: t_eta
+
+    kernel = 0.0d0
+
+    rep_size = size(x1, dim=3)
+    allocate(inv_sigma(nsigmas))
+
+    do i =1, nsigmas
+       inv_sigma(i) = -1.0d0 / sigmas(i)
+    enddo
+
+    ! work_total = (nm1 * (nm1 + 1)) / 2
+    ! work_done = 0
+
+    ! t_start = omp_get_wtime()
+
+    ! write(*,*) "QML: Non-alchemical Gaussian kernel progess:"
+    !$OMP PARALLEL DO private(l1) shared(work_done) schedule(dynamic)
+    do a = 1, nm1
+
+        ! ! if (omp_get_thread_num() == 0) then
+        ! !     write(*,"(F10.1, A)") dble(work_done) / dble(work_total) * 100.0d0 , " %"
+        ! ! endif
+
+        ! if (omp_get_thread_num() == 0) then
+
+        !     t_elapsed = omp_get_wtime() - t_start
+        !     t_eta = t_elapsed * work_total / work_done - t_elapsed
+
+        !  write(*,"(F10.1, A, F10.1, A, F10.1, A, F10.1, A)") dble(work_done) / dble(work_total) * 100.0d0 , " %", &
+        !      & t_eta, " s", t_elapsed, " s", t_elapsed + t_eta, " s"
+        !   ! write(*,"(A, F10.1, A)") "elapsed", omp_get_wtime() - t_start, "s"
+
+
+
+
+        !   ! write(*,"(A, F10.1, A)") "eta", (omp_get_wtime() - t_start) * dble(work_total) / dble(work_done) &
+        !   !    & - (omp_get_wtime() - t_start), "s"
+        ! endif
+
+        ! Molecule 2
+        do b = a, nm1
+
+            ! Atom in Molecule 1
+            do j1 = 1, n1(a)
+
+                !Atom in Molecule2
+                do j2 = 1, n1(b)
+
+                    if (q1(j1,a) == q1(j2,b)) then
+
+                        l1 = sum(abs(x1(a,j1,:) - x1(b,j2,:)))
+                        kernel(:, b, a) = kernel(:, b, a) + exp(l1 * inv_sigma(:))
+
+                    endif
+
+                enddo
+            enddo
+
+            if (b > a) then
+                kernel(:, a, b) = kernel(:, b, a)
+
+            endif
+
+        enddo
+
+        !$OMP ATOMIC
+        work_done = work_done + (nm1 - a + 1)
+        !$OMP END ATOMIC
+
+    enddo
+    !$OMP END PARALLEL do
+
+    write(*,"(F10.1, A)") dble(work_done) / dble(work_total) * 100.0d0 , " %"
+    write(*,*) "QML: Non-alchemical Gaussian kernel completed!"
+
+    deallocate(inv_sigma)
+
+end subroutine fsymmetric_local_kernels_laplacian
+
 
 subroutine flocal_kernel(x1, x2, q1, q2, n1, n2, nm1, nm2, sigma, kernel)
 
@@ -409,6 +629,67 @@ subroutine flocal_kernel(x1, x2, q1, q2, n1, n2, nm1, nm2, sigma, kernel)
     !$OMP END PARALLEL do
 
 end subroutine flocal_kernel
+
+
+subroutine flocal_kernel_laplacian(x1, x2, q1, q2, n1, n2, nm1, nm2, sigma, kernel)
+
+    implicit none
+
+    double precision, dimension(:,:,:), intent(in) :: x1
+    double precision, dimension(:,:,:), intent(in) :: x2
+
+    integer, dimension(:,:), intent(in) :: q1
+    integer, dimension(:,:), intent(in) :: q2
+
+    integer, dimension(:), intent(in) :: n1
+    integer, dimension(:), intent(in) :: n2
+
+    integer, intent(in) :: nm1
+    integer, intent(in) :: nm2
+
+    double precision, intent(in) :: sigma
+
+    double precision, dimension(nm2,nm1), intent(out) :: kernel
+
+    integer :: j1, j2
+    integer :: a, b
+
+    integer :: rep_size
+    double precision :: inv_sigma
+    double precision :: l1
+
+    kernel = 0.0d0
+
+    rep_size = size(x1, dim=3)
+    inv_sigma = -1.0d0 / sigma
+
+    !$OMP PARALLEL DO private(l1) schedule(dynamic)
+    do a = 1, nm1
+
+        ! Molecule 2
+        do b = 1, nm2
+
+            ! Atom in Molecule 1
+            do j1 = 1, n1(a)
+
+                !Atom in Molecule2
+                do j2 = 1, n2(b)
+
+                    if (q1(j1,a) == q2(j2,b)) then
+
+                       l1 = sum(abs(x1(a,j1,:) - x2(b,j2,:)))
+                       kernel(b, a) = kernel(b, a) + exp(l1 * inv_sigma)
+
+                    endif
+
+                enddo
+            enddo
+
+        enddo
+    enddo
+    !$OMP END PARALLEL do
+
+end subroutine flocal_kernel_laplacian
 
 
 subroutine fsymmetric_local_kernel(x1, q1, n1, nm1, sigma, kernel)
